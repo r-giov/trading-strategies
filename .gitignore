@@ -1,0 +1,31 @@
+# Exports (local output — large files, generated per run)
+exports/
+strategy_exports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+*.env
+
+# Data (downloaded at runtime)
+*.csv
+!config/*.csv

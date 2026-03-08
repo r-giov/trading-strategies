@@ -1,0 +1,9 @@
+{
+  "account_size": 100000,
+  "profit_target_pct": 10,
+  "max_daily_loss_pct": 5,
+  "max_total_loss_pct": 10,
+  "challenge_days": 30,
+  "crypto_leverage_standard": 3,
+  "crypto_leverage_swing": 1
+}

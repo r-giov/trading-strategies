@@ -1,0 +1,17 @@
+{
+  "crypto": [
+    "BTC-USD", "ETH-USD", "SOL-USD", "LTC-USD", "XRP-USD",
+    "ADA-USD", "DOT-USD", "DOGE-USD", "DASH-USD", "EOS-USD",
+    "XLM-USD", "AVAX-USD", "BNB-USD", "LINK-USD", "AAVE-USD"
+  ],
+  "indices": ["^DJI", "^IXIC", "^GSPC", "^GDAXI"],
+  "forex_majors": ["EURUSD=X", "GBPUSD=X", "USDJPY=X"],
+  "commodities": ["GC=F", "CL=F"],
+  "asset_strategy_map": {
+    "indices": ["MACD_Crossover", "Triple_EMA"],
+    "forex_majors": ["RSI_Mean_Reversion"],
+    "commodities": ["Donchian_Breakout"],
+    "crypto": ["Donchian_Breakout", "Triple_EMA"],
+    "forex_minors": ["MACD_Crossover"]
+  }
+}
