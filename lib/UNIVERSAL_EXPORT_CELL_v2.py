@@ -240,7 +240,7 @@ log_combined.to_csv(log_path, index=False)
 print(f"\u2705 run_log.csv ({len(log_combined)} runs)")
 
 # ════════════════════════════════════════════════════════════════
-# 2. GENERATE PDF TEARSHEET
+# 2. GENERATE PDF TEARSHEET — Clean White Card Design
 # ════════════════════════════════════════════════════════════════
 pdf_path = os.path.join(LATEST_DIR, "tearsheet.pdf")
 pdf_archive = os.path.join(ARCHIVE_DIR, f"{RUN_ID}_tearsheet.pdf")
@@ -248,22 +248,82 @@ pdf_archive = os.path.join(ARCHIVE_DIR, f"{RUN_ID}_tearsheet.pdf")
 fmt = lambda v, d=2: f"{v:.{d}f}" if v is not None and not np.isnan(v) else "N/A"
 fmtp = lambda v: f"{v:.2%}" if v is not None and not np.isnan(v) else "N/A"
 
+# ── Design tokens ──
+BG       = '#FFFFFF'
+CARD_BG  = '#F7F8FA'
+CARD_BRD = '#E2E5EB'
+TEXT_PRI = '#1A1D23'
+TEXT_SEC = '#5A6270'
+TEXT_MUT = '#8C95A3'
+ACCENT   = '#2563EB'   # Blue
+GREEN    = '#059669'
+RED      = '#DC2626'
+ORANGE   = '#EA580C'
+GRID_CLR = '#E5E7EB'
+
+def _draw_card(ax_fig, x, y, w, h, label, value, color=ACCENT, fontsize_val=22):
+    """Draw a rounded metric card on the figure."""
+    from matplotlib.patches import FancyBboxPatch
+    rect = FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.008",
+                           facecolor=CARD_BG, edgecolor=CARD_BRD, linewidth=1.2,
+                           transform=ax_fig.transAxes, zorder=2)
+    ax_fig.add_patch(rect)
+    ax_fig.text(x + w/2, y + h*0.68, value, ha='center', va='center',
+                fontsize=fontsize_val, fontweight='bold', color=color,
+                transform=ax_fig.transAxes, zorder=3)
+    ax_fig.text(x + w/2, y + h*0.25, label, ha='center', va='center',
+                fontsize=8, color=TEXT_SEC, transform=ax_fig.transAxes, zorder=3)
+
+def _style_ax(ax, title=None):
+    """Apply clean white styling to an axis."""
+    ax.set_facecolor(BG)
+    ax.tick_params(colors=TEXT_SEC, labelsize=8)
+    ax.grid(True, alpha=0.4, color=GRID_CLR, linewidth=0.8)
+    for spine in ax.spines.values():
+        spine.set_color(CARD_BRD)
+        spine.set_linewidth(0.8)
+    if title:
+        ax.set_title(title, color=TEXT_PRI, fontsize=11, fontweight='bold', pad=10)
+
 with PdfPages(pdf_path) as pdf:
 
-    # ── PAGE 1: Summary Metrics ──
-    fig, ax = plt.subplots(figsize=(11, 8.5))
-    ax.axis('off')
-    fig.patch.set_facecolor('#0d0d1a')
+    # ── PAGE 1: Dashboard with Metric Cards + Summary Table ──
+    fig = plt.figure(figsize=(11, 8.5))
+    fig.patch.set_facecolor(BG)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis('off')
 
-    # Title
-    ax.text(0.5, 0.95, f"STRATEGY TEARSHEET", ha='center', va='top', fontsize=22,
-            fontweight='bold', color='white', transform=ax.transAxes)
-    ax.text(0.5, 0.90, f"{STRATEGY_NAME}  |  {TICKER}  |  {param_str}", ha='center', va='top',
-            fontsize=13, color='#8888cc', transform=ax.transAxes, family='monospace')
-    ax.text(0.5, 0.86, f"{full_close.index[0].date()} to {full_close.index[-1].date()}  |  {len(full_close)} bars  |  Run: {RUN_ID}",
-            ha='center', va='top', fontsize=10, color='#6a6a8a', transform=ax.transAxes)
+    # Header bar
+    from matplotlib.patches import FancyBboxPatch, Rectangle
+    header = Rectangle((0, 0.91), 1, 0.09, facecolor=ACCENT, transform=ax.transAxes, zorder=1)
+    ax.add_patch(header)
+    ax.text(0.04, 0.955, "STRATEGY TEARSHEET", ha='left', va='center', fontsize=20,
+            fontweight='bold', color='white', transform=ax.transAxes, zorder=2)
+    ax.text(0.96, 0.955, f"{STRATEGY_NAME}  |  {TICKER}", ha='right', va='center',
+            fontsize=12, color='rgba(255,255,255,0.85)', transform=ax.transAxes, zorder=2, family='monospace')
+    ax.text(0.96, 0.92, f"{full_close.index[0].date()} to {full_close.index[-1].date()}  |  {len(full_close)} bars  |  {param_str}",
+            ha='right', va='center', fontsize=8, color='rgba(255,255,255,0.65)', transform=ax.transAxes, zorder=2)
 
-    # Metrics table
+    # Metric cards row — top KPIs
+    card_w, card_h = 0.145, 0.09
+    card_y = 0.79
+    cards = [
+        ("SHARPE", fmt(M['sharpe'], 3), ACCENT),
+        ("RETURN", fmtp(M['total_return']), GREEN if (M['total_return'] or 0) > 0 else RED),
+        ("MAX DD", fmtp(M['max_dd']), RED if (M['max_dd'] or 0) < -0.15 else ORANGE),
+        ("WIN RATE", f"{M['win_rate']:.1f}%" if M['win_rate'] else "N/A", GREEN if (M['win_rate'] or 0) > 50 else RED),
+        ("TRADES", str(M['trades']), TEXT_PRI),
+        ("PROFIT FACTOR", fmt(M['pf']), GREEN if (M['pf'] or 0) > 1.5 else (ORANGE if (M['pf'] or 0) > 1 else RED)),
+    ]
+    x_start = 0.03
+    gap = (0.94 - len(cards) * card_w) / (len(cards) - 1)
+    for i, (label, value, color) in enumerate(cards):
+        cx = x_start + i * (card_w + gap)
+        _draw_card(ax, cx, card_y, card_w, card_h, label, value, color)
+
+    # IS vs OOS comparison table
+    table_y = 0.04
+    table_h = 0.70
     rows = [
         ["METRIC", "FULL SAMPLE", "IN-SAMPLE", "OUT-OF-SAMPLE", "BUY & HOLD"],
         ["Total Return", fmtp(M['total_return']), fmtp(M['is_return']), fmtp(M['oos_return']), fmtp(M['bh_return'])],
@@ -271,7 +331,7 @@ with PdfPages(pdf_path) as pdf:
         ["Sortino Ratio", fmt(M['sortino'], 3), "—", "—", "—"],
         ["Max Drawdown", fmtp(M['max_dd']), fmtp(M['is_dd']), fmtp(M['oos_dd']), fmtp(M['bh_dd'])],
         ["Calmar Ratio", fmt(M['calmar'], 3), "—", "—", "—"],
-        ["Volatility", fmtp(M['volatility']), "—", "—", "—"],
+        ["Volatility (Ann.)", fmtp(M['volatility']), "—", "—", "—"],
         ["Win Rate", f"{M['win_rate']:.1f}%" if M['win_rate'] else "N/A", "—", "—", "—"],
         ["Profit Factor", fmt(M['pf']), "—", "—", "—"],
         ["Expectancy", fmt(M['expectancy'], 4), "—", "—", "—"],
@@ -285,89 +345,126 @@ with PdfPages(pdf_path) as pdf:
     ]
 
     table = ax.table(cellText=rows[1:], colLabels=rows[0], cellLoc='center', loc='center',
-                     bbox=[0.02, 0.03, 0.96, 0.78])
+                     bbox=[0.03, table_y, 0.94, table_h])
     table.auto_set_font_size(False)
     table.set_fontsize(9)
     for (row, col), cell in table.get_celld().items():
-        cell.set_edgecolor('#2a2a4a')
+        cell.set_edgecolor(CARD_BRD)
+        cell.set_linewidth(0.6)
         if row == 0:
-            cell.set_facecolor('#1a1a3e')
+            cell.set_facecolor(ACCENT)
             cell.set_text_props(color='white', fontweight='bold', fontsize=8)
         else:
-            cell.set_facecolor('#111128' if row % 2 == 0 else '#0d0d1a')
-            cell.set_text_props(color='#d0d0e8', fontsize=8, family='monospace')
-        cell.set_height(0.055)
+            cell.set_facecolor(BG if row % 2 == 1 else CARD_BG)
+            cell.set_text_props(color=TEXT_PRI, fontsize=8, family='monospace')
+            if col == 0:
+                cell.set_text_props(color=TEXT_PRI, fontsize=8, fontweight='bold')
+        cell.set_height(0.052)
 
-    pdf.savefig(fig, facecolor='#0d0d1a')
+    # Footer
+    ax.text(0.5, 0.01, f"Run {RUN_ID}  |  QS Finance", ha='center', va='bottom',
+            fontsize=7, color=TEXT_MUT, transform=ax.transAxes)
+
+    pdf.savefig(fig, facecolor=BG)
     plt.close(fig)
 
     # ── PAGE 2: Equity Curve + Drawdown ──
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 8.5), gridspec_kw={'height_ratios': [3, 1]})
-    fig.patch.set_facecolor('#0d0d1a')
-    fig.suptitle(f'{STRATEGY_NAME} on {TICKER} — Equity & Drawdown', fontsize=14, fontweight='bold', color='white')
+    fig.patch.set_facecolor(BG)
+    fig.suptitle(f'{STRATEGY_NAME} on {TICKER} — Equity & Drawdown', fontsize=14,
+                 fontweight='bold', color=TEXT_PRI, y=0.97)
 
     eq_strat = pf_full.value(); eq_bh = pf_bh.value()
-    ax1.plot(full_close.index[:split_idx], eq_strat.iloc[:split_idx].values, color='#3498db', linewidth=1.5, label='Strategy (IS)')
-    ax1.plot(full_close.index[split_idx:], eq_strat.iloc[split_idx:].values, color='#e67e22', linewidth=1.5, label='Strategy (OOS)')
-    ax1.plot(full_close.index, eq_bh.values, color='gray', linewidth=1, alpha=0.5, linestyle='--', label='Buy & Hold')
-    ax1.axvline(x=full_close.index[split_idx], color='red', linestyle=':', alpha=0.4)
-    ax1.set_facecolor('#0d0d1a'); ax1.tick_params(colors='#8888aa'); ax1.grid(True, alpha=0.15, color='#333')
-    ax1.set_ylabel('Portfolio Value ($)', color='#8888aa'); ax1.legend(fontsize=8, facecolor='#111128', edgecolor='#333', labelcolor='#d0d0e8')
+
+    # Equity curve with gradient fill
+    _style_ax(ax1)
+    ax1.plot(full_close.index[:split_idx], eq_strat.iloc[:split_idx].values,
+             color=ACCENT, linewidth=2, label='Strategy (IS)', solid_capstyle='round')
+    ax1.plot(full_close.index[split_idx:], eq_strat.iloc[split_idx:].values,
+             color=ORANGE, linewidth=2, label='Strategy (OOS)', solid_capstyle='round')
+    ax1.plot(full_close.index, eq_bh.values, color=TEXT_MUT, linewidth=1.2,
+             alpha=0.6, linestyle='--', label='Buy & Hold')
+    ax1.axvline(x=full_close.index[split_idx], color=RED, linestyle=':', alpha=0.3, linewidth=1)
+    ax1.fill_between(full_close.index[:split_idx], eq_strat.iloc[:split_idx].values,
+                      eq_strat.iloc[:split_idx].values.min(), alpha=0.06, color=ACCENT)
+    ax1.fill_between(full_close.index[split_idx:], eq_strat.iloc[split_idx:].values,
+                      eq_strat.iloc[split_idx:].values.min(), alpha=0.06, color=ORANGE)
+    ax1.set_ylabel('Portfolio Value ($)', color=TEXT_SEC, fontsize=9)
+    ax1.legend(fontsize=8, facecolor=BG, edgecolor=CARD_BRD, labelcolor=TEXT_PRI, framealpha=0.95)
     ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
-    for spine in ax1.spines.values(): spine.set_color('#2a2a4a')
 
-    # Stats box on equity chart
-    stats_text = f"Sharpe: {fmt(M['sharpe'],3)}  |  Return: {fmtp(M['total_return'])}  |  MaxDD: {fmtp(M['max_dd'])}  |  WR: {M['win_rate']:.1f}%  |  PF: {fmt(M['pf'])}"
-    ax1.text(0.5, 0.02, stats_text, transform=ax1.transAxes, fontsize=8, ha='center', color='#aaa', family='monospace',
-             bbox=dict(boxstyle='round,pad=0.4', facecolor='#111128', edgecolor='#2a2a4a', alpha=0.9))
+    # Stats banner
+    stats_text = f"Sharpe: {fmt(M['sharpe'],3)}   |   Return: {fmtp(M['total_return'])}   |   MaxDD: {fmtp(M['max_dd'])}   |   WR: {M['win_rate']:.1f}%   |   PF: {fmt(M['pf'])}"
+    ax1.text(0.5, 0.03, stats_text, transform=ax1.transAxes, fontsize=8, ha='center',
+             color=TEXT_SEC, family='monospace',
+             bbox=dict(boxstyle='round,pad=0.5', facecolor=CARD_BG, edgecolor=CARD_BRD, alpha=0.95))
 
+    # Drawdown
+    _style_ax(ax2)
     dd = pf_full.drawdown() * 100
-    ax2.fill_between(full_close.index, dd.values, 0, color='#e74c3c', alpha=0.5)
-    ax2.set_facecolor('#0d0d1a'); ax2.tick_params(colors='#8888aa'); ax2.grid(True, alpha=0.15, color='#333')
-    ax2.set_ylabel('Drawdown %', color='#8888aa'); ax2.set_xlabel('Date', color='#8888aa')
-    for spine in ax2.spines.values(): spine.set_color('#2a2a4a')
+    ax2.fill_between(full_close.index, dd.values, 0, color=RED, alpha=0.2)
+    ax2.plot(full_close.index, dd.values, color=RED, linewidth=0.8, alpha=0.7)
+    ax2.set_ylabel('Drawdown %', color=TEXT_SEC, fontsize=9)
+    ax2.set_xlabel('Date', color=TEXT_SEC, fontsize=9)
 
-    plt.tight_layout()
-    pdf.savefig(fig, facecolor='#0d0d1a')
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    pdf.savefig(fig, facecolor=BG)
     plt.close(fig)
 
-    # ── PAGE 3: Trade Analysis ──
+    # ── PAGE 3: Trade Analysis — 2x2 Grid ──
     if len(tr) > 0:
         fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
-        fig.patch.set_facecolor('#0d0d1a')
-        fig.suptitle(f'Trade-by-Trade Analysis — {len(tr)} Trades', fontsize=14, fontweight='bold', color='white')
+        fig.patch.set_facecolor(BG)
+        fig.suptitle(f'Trade-by-Trade Analysis — {len(tr)} Trades', fontsize=14,
+                     fontweight='bold', color=TEXT_PRI, y=0.97)
 
         n = len(tr)
-        colors_bar = ['#2ca02c' if r > 0 else '#e74c3c' for r in tr]
-        colors_pnl = ['#2ca02c' if p > 0 else '#e74c3c' for p in pnl]
+        colors_bar = [GREEN if r > 0 else RED for r in tr]
+        colors_pnl = [GREEN if p > 0 else RED for p in pnl]
 
         for a in axes.flat:
-            a.set_facecolor('#0d0d1a'); a.tick_params(colors='#8888aa'); a.grid(True, alpha=0.15, color='#333')
-            for spine in a.spines.values(): spine.set_color('#2a2a4a')
+            _style_ax(a)
 
-        axes[0,0].bar(range(n), tr*100, color=colors_bar, edgecolor='none', width=0.8)
-        axes[0,0].axhline(np.mean(tr)*100, color='#3498db', linestyle='--', linewidth=1.5)
-        axes[0,0].set_title('Trade Returns (%)', color='white', fontsize=10); axes[0,0].set_xlabel('Trade #', color='#8888aa')
+        # Trade returns bar chart
+        axes[0,0].bar(range(n), tr*100, color=colors_bar, edgecolor='none', width=0.8, alpha=0.85)
+        axes[0,0].axhline(np.mean(tr)*100, color=ACCENT, linestyle='--', linewidth=1.5, label=f'Avg: {np.mean(tr)*100:.2f}%')
+        axes[0,0].axhline(0, color=TEXT_MUT, linewidth=0.5)
+        axes[0,0].set_title('Trade Returns (%)', color=TEXT_PRI, fontsize=11, fontweight='bold')
+        axes[0,0].set_xlabel('Trade #', color=TEXT_SEC, fontsize=8)
+        axes[0,0].legend(fontsize=7, facecolor=BG, edgecolor=CARD_BRD)
 
-        axes[0,1].bar(range(n), pnl, color=colors_pnl, edgecolor='none', width=0.8)
-        axes[0,1].axhline(np.mean(pnl), color='#3498db', linestyle='--', linewidth=1.5)
-        axes[0,1].set_title('Trade P&L ($)', color='white', fontsize=10); axes[0,1].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+        # Trade P&L bar chart
+        axes[0,1].bar(range(n), pnl, color=colors_pnl, edgecolor='none', width=0.8, alpha=0.85)
+        axes[0,1].axhline(np.mean(pnl), color=ACCENT, linestyle='--', linewidth=1.5, label=f'Avg: ${np.mean(pnl):,.0f}')
+        axes[0,1].axhline(0, color=TEXT_MUT, linewidth=0.5)
+        axes[0,1].set_title('Trade P&L ($)', color=TEXT_PRI, fontsize=11, fontweight='bold')
+        axes[0,1].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+        axes[0,1].legend(fontsize=7, facecolor=BG, edgecolor=CARD_BRD)
 
+        # Cumulative P&L with gradient
         cum_pnl = np.cumsum(pnl)
-        axes[1,0].plot(range(1, n+1), cum_pnl, color='#3498db', linewidth=2, marker='o', markersize=3)
-        axes[1,0].fill_between(range(1, n+1), cum_pnl, 0, where=cum_pnl>=0, alpha=0.15, color='green')
-        axes[1,0].fill_between(range(1, n+1), cum_pnl, 0, where=cum_pnl<0, alpha=0.15, color='red')
-        axes[1,0].set_title('Cumulative P&L', color='white', fontsize=10); axes[1,0].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+        axes[1,0].plot(range(1, n+1), cum_pnl, color=ACCENT, linewidth=2.5, solid_capstyle='round')
+        axes[1,0].fill_between(range(1, n+1), cum_pnl, 0, where=cum_pnl>=0, alpha=0.12, color=GREEN)
+        axes[1,0].fill_between(range(1, n+1), cum_pnl, 0, where=cum_pnl<0, alpha=0.12, color=RED)
+        axes[1,0].axhline(0, color=TEXT_MUT, linewidth=0.5)
+        axes[1,0].set_title('Cumulative P&L', color=TEXT_PRI, fontsize=11, fontweight='bold')
+        axes[1,0].set_xlabel('Trade #', color=TEXT_SEC, fontsize=8)
+        axes[1,0].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
 
-        axes[1,1].hist(tr*100, bins=min(30, max(10, n//3)), color='#3498db', edgecolor='#1a1a2e', alpha=0.8)
-        axes[1,1].axvline(np.mean(tr)*100, color='#e74c3c', linestyle='--', linewidth=2)
-        axes[1,1].set_title('Return Distribution', color='white', fontsize=10); axes[1,1].set_xlabel('Return %', color='#8888aa')
+        # Return distribution histogram
+        axes[1,1].hist(tr*100, bins=min(30, max(10, n//3)), color=ACCENT, edgecolor='white',
+                       alpha=0.75, linewidth=0.5)
+        axes[1,1].axvline(np.mean(tr)*100, color=RED, linestyle='--', linewidth=2, label=f'Mean: {np.mean(tr)*100:.2f}%')
+        axes[1,1].axvline(0, color=TEXT_MUT, linewidth=0.8, alpha=0.5)
+        axes[1,1].set_title('Return Distribution', color=TEXT_PRI, fontsize=11, fontweight='bold')
+        axes[1,1].set_xlabel('Return %', color=TEXT_SEC, fontsize=8)
+        axes[1,1].legend(fontsize=7, facecolor=BG, edgecolor=CARD_BRD)
 
-        plt.tight_layout()
-        pdf.savefig(fig, facecolor='#0d0d1a')
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        pdf.savefig(fig, facecolor=BG)
         plt.close(fig)
 
-    # ── PAGE 4: Monte Carlo FTMO ──
+    # ── PAGE 4: Monte Carlo FTMO Simulation ──
     dr = daily_rets.values.ravel(); dr = dr[~np.isnan(dr)]
     N_SIM = 5000; DAYS = 30; ACCOUNT = 100000
     np.random.seed(42)
@@ -390,34 +487,57 @@ with PdfPages(pdf_path) as pdf:
     n_still = N_SIM - n_passed - n_blown_t - n_blown_d
     pass_rate = n_passed / N_SIM * 100
 
-    fig, ax = plt.subplots(figsize=(11, 8.5))
-    fig.patch.set_facecolor('#0d0d1a'); ax.set_facecolor('#0d0d1a')
-    for spine in ax.spines.values(): spine.set_color('#2a2a4a')
-    ax.tick_params(colors='#8888aa'); ax.grid(True, alpha=0.15, color='#333')
+    verdict = "FAVORABLE" if pass_rate >= 50 else "POSSIBLE" if pass_rate >= 25 else "CHALLENGING" if pass_rate >= 10 else "UNLIKELY"
+    verdict_color = GREEN if pass_rate >= 50 else ORANGE if pass_rate >= 25 else (ORANGE if pass_rate >= 10 else RED)
+
+    fig = plt.figure(figsize=(11, 8.5))
+    fig.patch.set_facecolor(BG)
+
+    # Top section: MC result cards
+    ax_top = fig.add_axes([0, 0.82, 1, 0.18])
+    ax_top.set_xlim(0, 1); ax_top.set_ylim(0, 1); ax_top.axis('off')
+
+    # Title
+    ax_top.text(0.5, 0.85, f'FTMO Monte Carlo — {N_SIM:,} Simulations', ha='center', va='center',
+                fontsize=16, fontweight='bold', color=TEXT_PRI, transform=ax_top.transAxes)
+
+    # Result cards
+    mc_cards = [
+        ("PASS RATE", f"{pass_rate:.1f}%", verdict_color),
+        ("VERDICT", verdict, verdict_color),
+        ("PASSED", f"{n_passed:,}", GREEN),
+        ("BLOWN (TOTAL)", f"{n_blown_t:,}", RED),
+        ("BLOWN (DAILY)", f"{n_blown_d:,}", RED),
+        ("STILL TRADING", f"{n_still:,}", TEXT_SEC),
+    ]
+    mc_cw = 0.14
+    mc_gap = (0.92 - len(mc_cards) * mc_cw) / (len(mc_cards) - 1)
+    for i, (label, value, color) in enumerate(mc_cards):
+        cx = 0.04 + i * (mc_cw + mc_gap)
+        _draw_card(ax_top, cx, 0.05, mc_cw, 0.65, label, value, color, fontsize_val=16)
+
+    # Bottom section: Equity paths
+    ax_mc = fig.add_axes([0.08, 0.08, 0.86, 0.70])
+    _style_ax(ax_mc)
 
     for path in sample_paths:
-        c = '#2ca02c' if path[-1] >= 110000 else ('#e74c3c' if path[-1] <= 90000 else '#555555')
-        ax.plot(range(DAYS+1), path, color=c, alpha=0.25, linewidth=0.5)
-    ax.axhline(110000, color='#2ca02c', linestyle='--', linewidth=2.5, label=f'10% Target ($110k)')
-    ax.axhline(90000, color='#e74c3c', linestyle='--', linewidth=2.5, label=f'10% Max Loss ($90k)')
-    ax.axhline(100000, color='white', linestyle='-', linewidth=0.5, alpha=0.3)
+        c = GREEN if path[-1] >= 110000 else (RED if path[-1] <= 90000 else TEXT_MUT)
+        ax_mc.plot(range(DAYS+1), path, color=c, alpha=0.15, linewidth=0.5)
+    ax_mc.axhline(110000, color=GREEN, linestyle='--', linewidth=2.5, label=f'10% Target ($110k)')
+    ax_mc.axhline(90000, color=RED, linestyle='--', linewidth=2.5, label=f'10% Max Loss ($90k)')
+    ax_mc.axhline(100000, color=TEXT_MUT, linestyle='-', linewidth=0.8, alpha=0.4)
 
-    verdict = "FAVORABLE" if pass_rate >= 50 else "POSSIBLE" if pass_rate >= 25 else "CHALLENGING" if pass_rate >= 10 else "UNLIKELY"
-    emoji = "\U0001f7e2" if pass_rate >= 50 else "\U0001f7e1" if pass_rate >= 25 else "\U0001f7e0" if pass_rate >= 10 else "\U0001f534"
+    ax_mc.set_xlabel('Trading Day', color=TEXT_SEC, fontsize=9)
+    ax_mc.set_ylabel('Equity ($)', color=TEXT_SEC, fontsize=9)
+    ax_mc.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+    ax_mc.legend(fontsize=9, facecolor=BG, edgecolor=CARD_BRD, labelcolor=TEXT_PRI, framealpha=0.95)
 
-    ax.set_title(f'FTMO Monte Carlo — {N_SIM:,} Simulations  |  Pass Rate: {pass_rate:.1f}% ({verdict})', fontsize=14, fontweight='bold', color='white')
-    ax.set_xlabel('Trading Day', color='#8888aa'); ax.set_ylabel('Equity ($)', color='#8888aa')
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'${x:,.0f}'))
-    ax.legend(fontsize=10, facecolor='#111128', edgecolor='#333', labelcolor='#d0d0e8')
+    # Median final equity annotation
+    ax_mc.text(0.5, 0.03, f"Median Final Equity: ${np.median(final_eqs):,.0f}", transform=ax_mc.transAxes,
+               fontsize=9, ha='center', color=TEXT_SEC, family='monospace',
+               bbox=dict(boxstyle='round,pad=0.5', facecolor=CARD_BG, edgecolor=CARD_BRD, alpha=0.95))
 
-    mc_text = (f"Passed: {n_passed:,} ({n_passed/N_SIM*100:.1f}%)  |  "
-               f"Blown Total: {n_blown_t:,}  |  Blown Daily: {n_blown_d:,}  |  "
-               f"Still Trading: {n_still:,}  |  Median Final: ${np.median(final_eqs):,.0f}")
-    ax.text(0.5, 0.02, mc_text, transform=ax.transAxes, fontsize=8, ha='center', color='#aaa', family='monospace',
-            bbox=dict(boxstyle='round,pad=0.4', facecolor='#111128', edgecolor='#2a2a4a', alpha=0.9))
-
-    plt.tight_layout()
-    pdf.savefig(fig, facecolor='#0d0d1a')
+    pdf.savefig(fig, facecolor=BG)
     plt.close(fig)
 
 # Copy PDF to archive
