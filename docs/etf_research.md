@@ -6,7 +6,7 @@
 2. **XAUUSD (Gold)** — Donchian Breakout: Cleanest commodity trends, no contango
 3. **BTCUSD** — Donchian + EMA: Fat tails + persistent trends
 4. **EURUSD** — RSI Mean Reversion: Most liquid FX pair, textbook mean reversion on daily
-5. **US500 (S&P)** — EMA Crossover + Trend Filter: Broad market, trend filter is critical
+5. **US500 (S&P)** — MACD Crossover: Broad market (NOTE: EMA Crossover failed OOS on SPY — IS Sharpe 1.27 → OOS -0.38)
 6. **DAX** — MACD Crossover: Export-driven, trending
 7. **ETHUSD** — Donchian: Similar to BTC but higher vol, wider parameters needed
 8. **Crude Oil** — Donchian: Supply shock breakouts, no contango on CFD
