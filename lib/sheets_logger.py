@@ -46,6 +46,18 @@ TRADES_COLUMNS = [
     'holding_days', 'is_winner'
 ]
 
+# Column headers for portfolio/QM sheet
+PORTFOLIO_COLUMNS = [
+    'timestamp', 'run_id', 'strategy', 'universe_size',
+    'top_n', 'rebalance_freq', 'lookback_months',
+    'total_return', 'ann_return', 'sharpe', 'sortino',
+    'max_dd', 'volatility', 'calmar',
+    'total_trades', 'win_rate',
+    'mc_ftmo_pass_rate', 'mc_verdict',
+    'current_holdings', 'data_start', 'data_end',
+    'notes'
+]
+
 
 def _authenticate():
     """Authenticate with Google and return gspread client. Only works in Colab."""
@@ -88,6 +100,7 @@ class SheetsLogger:
         self._ensure_worksheet('Results', RESULTS_COLUMNS)
         self._ensure_worksheet('Boruta', BORUTA_COLUMNS)
         self._ensure_worksheet('Trades', TRADES_COLUMNS)
+        self._ensure_worksheet('Portfolio', PORTFOLIO_COLUMNS)
 
         # Remove default Sheet1 if our sheets were just created
         try:
@@ -269,6 +282,62 @@ class SheetsLogger:
 
         print(f"\u2705 Logged {len(rows)} trades for {strategy} on {ticker}")
 
+    def log_portfolio(self, results):
+        """
+        Log portfolio-level results (e.g. Quantitative Momentum).
+
+        Parameters
+        ----------
+        results : dict
+            With keys: metadata, backtest_metrics, ftmo_monte_carlo,
+            current_portfolio, etc.
+        """
+        if self.spreadsheet is None:
+            return
+
+        meta = results.get('metadata', {})
+        metrics = results.get('backtest_metrics', {})
+        mc = results.get('ftmo_monte_carlo', {})
+        current = results.get('current_portfolio', [])
+
+        # Format current holdings as comma-separated string
+        if isinstance(current, list):
+            holdings_str = ', '.join(
+                h.get('instrument', h.get('ticker', '')) for h in current
+            ) if current else ''
+        else:
+            holdings_str = str(current)
+
+        row = [
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            meta.get('run_id', ''),
+            meta.get('strategy', meta.get('strategy_name', '')),
+            meta.get('universe_size', ''),
+            meta.get('top_n', results.get('best_params', {}).get('top_n', '')),
+            meta.get('rebalance_freq', results.get('best_params', {}).get('rebalance_freq', '')),
+            meta.get('lookback_months', results.get('best_params', {}).get('lookback_months', '')),
+            round(metrics.get('total_return', 0), 4),
+            round(metrics.get('ann_return', 0), 4),
+            round(metrics.get('sharpe', 0), 4),
+            round(metrics.get('sortino', 0), 4),
+            round(metrics.get('max_dd', metrics.get('max_drawdown', 0)), 4),
+            round(metrics.get('volatility', 0), 4),
+            round(metrics.get('calmar', 0), 4),
+            metrics.get('trades', metrics.get('total_trades', 0)),
+            round(metrics.get('win_rate', 0), 2),
+            round(mc.get('pass_rate', 0), 4),
+            mc.get('verdict', ''),
+            holdings_str,
+            meta.get('start_date', ''),
+            meta.get('end_date', ''),
+            meta.get('notes', '')
+        ]
+
+        ws = self.spreadsheet.worksheet('Portfolio')
+        ws.append_row(row, value_input_option='USER_ENTERED')
+        strat = meta.get('strategy', 'Portfolio')
+        print(f"\u2705 Logged portfolio: {strat} \u2192 Sharpe {metrics.get('sharpe', 0):.2f}")
+
     def import_summary_json(self, filepath):
         """Import a summary.json file directly."""
         with open(filepath, 'r') as f:
@@ -300,7 +369,24 @@ class SheetsLogger:
             except Exception as e:
                 print(f"\u26a0\ufe0f  Failed to import {s}: {e}")
 
-        print(f"\n\u2705 Import complete: {len(summaries)} results logged to Google Sheets")
+        # Also import trades.csv files
+        trade_files = list(export_path.rglob('trades.csv'))
+        trades_imported = 0
+        for t in trade_files:
+            try:
+                # Extract strategy and ticker from path: .../STRATEGY/TICKER/latest/trades.csv
+                parts = t.parts
+                ticker = parts[-3] if len(parts) >= 3 else 'unknown'
+                strategy = parts[-4] if len(parts) >= 4 else 'unknown'
+                run_id = 'imported'
+                trades_df = pd.read_csv(str(t))
+                if len(trades_df) > 0:
+                    self.log_trades(ticker, strategy, run_id, trades_df)
+                    trades_imported += 1
+            except Exception as e:
+                print(f"\u26a0\ufe0f  Failed to import trades {t}: {e}")
+
+        print(f"\n\u2705 Import complete: {len(summaries)} results + {trades_imported} trade logs to Google Sheets")
 
     def get_results_df(self):
         """Download the Results sheet as a pandas DataFrame."""
