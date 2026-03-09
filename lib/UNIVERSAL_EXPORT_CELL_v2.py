@@ -700,7 +700,7 @@ with PdfPages(pdf_path) as pdf:
         plt.close(fig)
 
     # ══════════════════════════════════════════════════════════
-    # PAGE 4: Parameter Sensitivity Analysis
+    # PAGE 4: Parameter Sensitivity — Line Charts + Summary Table
     # ══════════════════════════════════════════════════════════
     if len(PARAM_COLS) > 0 and len(results_df) > 1:
         _param_ranges = {}
@@ -708,28 +708,51 @@ with PdfPages(pdf_path) as pdf:
             if pc in results_df.columns:
                 unique_vals = sorted(results_df[pc].dropna().unique().tolist())
                 if len(unique_vals) > 1:
+                    # Cap at 15 evenly-spaced values to keep charts readable
+                    if len(unique_vals) > 15:
+                        step = max(1, len(unique_vals) // 15)
+                        unique_vals = unique_vals[::step]
+                        # Ensure best value is included
+                        bv = best_params.get(pc)
+                        if bv is not None and bv not in unique_vals:
+                            unique_vals.append(bv)
+                            unique_vals = sorted(unique_vals)
                     _param_ranges[pc] = unique_vals
 
         if _param_ranges:
             n_params = len(_param_ranges)
-            n_cols = min(n_params, 4)
-            n_rows = 2
+            # 2x2 grid layout (max 4 params shown as line charts)
+            n_chart = min(n_params, 4)
+            n_cols_chart = 2 if n_chart > 1 else 1
+            n_rows_chart = (n_chart + n_cols_chart - 1) // n_cols_chart
 
-            fig, axes = plt.subplots(n_rows, n_cols, figsize=(11, 8.5))
+            fig = plt.figure(figsize=(11, 8.5))
             fig.patch.set_facecolor(BG)
-            fig.suptitle(f'Parameter Sensitivity  |  {display_name} on {TICKER}',
-                         fontsize=14, fontweight='bold', color=TEXT_PRI, y=0.97)
-            fig.text(0.5, 0.945,
-                     'Sweep each parameter while holding others at best values. Flat = robust. Large swings = fragile.',
-                     ha='center', fontsize=9, color=TEXT_SEC)
 
-            if n_cols == 1:
-                axes = axes.reshape(n_rows, 1)
+            # Header
+            fig.text(0.5, 0.97, f'Parameter Sensitivity  |  {display_name} on {TICKER}',
+                     ha='center', fontsize=14, fontweight='bold', color=TEXT_PRI)
+            fig.text(0.5, 0.945,
+                     'Each parameter swept independently (others held at best). Flat lines = robust. Diverging IS/OOS = overfit.',
+                     ha='center', fontsize=8.5, color=TEXT_SEC)
 
             sensitivity_data = []
 
-            for col_idx, (pname, pvals) in enumerate(_param_ranges.items()):
-                if col_idx >= n_cols:
+            # Create subplots for line charts in top portion
+            chart_axes = []
+            for ci in range(n_chart):
+                r = ci // n_cols_chart
+                c = ci % n_cols_chart
+                # Position: top ~60% of page for charts, bottom for summary table
+                left = 0.08 + c * 0.48
+                bottom = 0.58 - r * 0.27 if n_rows_chart <= 2 else 0.65 - r * 0.22
+                width = 0.40
+                height = 0.22 if n_rows_chart <= 2 else 0.18
+                ax = fig.add_axes([left, bottom, width, height])
+                chart_axes.append(ax)
+
+            for ci, (pname, pvals) in enumerate(_param_ranges.items()):
+                if ci >= n_chart:
                     break
                 base_val = best_params.get(pname)
 
@@ -755,52 +778,116 @@ with PdfPages(pdf_path) as pdf:
                     except:
                         oos_sharpes.append(0.0)
 
+                # Compute sensitivity metrics
                 is_range = max(is_sharpes) - min(is_sharpes) if is_sharpes else 0
                 oos_range = max(oos_sharpes) - min(oos_sharpes) if oos_sharpes else 0
                 avg_sr = np.mean(is_sharpes + oos_sharpes) if (is_sharpes + oos_sharpes) else 0.01
                 sens_score = (is_range + oos_range) / 2 / max(abs(avg_sr), 0.01)
-                flag = "LOW" if sens_score < 0.5 else "HIGH"
-                sensitivity_data.append((pname, base_val, is_range, oos_range, sens_score, flag))
+                # IS-OOS correlation (do they agree?)
+                if len(is_sharpes) > 2:
+                    try:
+                        from scipy.stats import pearsonr
+                        corr, _ = pearsonr(is_sharpes, oos_sharpes)
+                    except:
+                        corr = 0.0
+                else:
+                    corr = 0.0
+                flag = "ROBUST" if sens_score < 0.5 and corr > 0.3 else ("MODERATE" if sens_score < 1.5 else "FRAGILE")
+                sensitivity_data.append((pname, base_val, is_range, oos_range, sens_score, corr, flag))
 
-                for row_idx, (sharpes, prefix) in enumerate([(is_sharpes, 'IS'), (oos_sharpes, 'OOS')]):
-                    ax = axes[row_idx][col_idx]
-                    _style_ax(ax)
-                    x = np.arange(len(pvals))
-                    base_sr = sharpes[pvals.index(base_val)] if base_val in pvals else np.mean(sharpes)
+                # ── Line chart: IS and OOS Sharpe on same axes ──
+                ax = chart_axes[ci]
+                _style_ax(ax)
 
-                    bar_colors = []
-                    for sr in sharpes:
-                        pct = (sr - base_sr) / abs(base_sr) * 100 if base_sr != 0 else 0
-                        if pct > 10: bar_colors.append('#059669')
-                        elif pct > 0: bar_colors.append('#6EE7B7')
-                        elif pct > -10: bar_colors.append('#D97706')
-                        else: bar_colors.append('#DC2626')
+                # Convert pvals to numeric x-axis positions
+                try:
+                    x_vals = [float(v) for v in pvals]
+                    x_numeric = True
+                except (ValueError, TypeError):
+                    x_vals = list(range(len(pvals)))
+                    x_numeric = False
 
-                    ax.bar(x, sharpes, color=bar_colors, edgecolor='white', alpha=0.85, width=0.7)
-                    if base_val in pvals:
-                        ax.axvline(pvals.index(base_val), color=ACCENT2, linestyle='--',
-                                   linewidth=1.5, alpha=0.7, label=f'Best: {base_val}')
-                        ax.legend(fontsize=7, facecolor=BG, edgecolor=CARD_BRD)
-                    ax.set_xticks(x)
-                    ax.set_xticklabels([str(v) for v in pvals], fontsize=7, rotation=45 if len(pvals) > 5 else 0)
-                    ax.set_ylabel('Sharpe', fontsize=8, color=TEXT_SEC)
-                    ax.set_title(f'{prefix} -- {pname}', fontsize=10, fontweight='bold', color=TEXT_PRI)
+                ax.plot(x_vals, is_sharpes, color=ACCENT2, linewidth=2.5, marker='o',
+                        markersize=5, label='IS', solid_capstyle='round', zorder=3)
+                ax.plot(x_vals, oos_sharpes, color=ORANGE, linewidth=2.5, marker='s',
+                        markersize=5, label='OOS', solid_capstyle='round', zorder=3)
 
-            for col_idx in range(len(_param_ranges), n_cols):
-                for row_idx in range(n_rows):
-                    axes[row_idx][col_idx].set_visible(False)
+                # Shade area between IS and OOS to highlight divergence
+                ax.fill_between(x_vals, is_sharpes, oos_sharpes, alpha=0.08,
+                                color=GREEN if corr > 0.3 else RED)
 
+                # Mark best value
+                if base_val is not None:
+                    try:
+                        bx = float(base_val) if x_numeric else pvals.index(base_val)
+                        ax.axvline(bx, color=GREEN, linestyle='--', linewidth=1.5, alpha=0.5, zorder=1)
+                        ax.annotate(f'Best: {base_val}', xy=(bx, max(max(is_sharpes), max(oos_sharpes))),
+                                    fontsize=7, color=GREEN, ha='center', va='bottom',
+                                    fontweight='bold')
+                    except:
+                        pass
+
+                ax.axhline(0, color=TEXT_MUT, linewidth=0.5, alpha=0.5)
+                ax.set_xlabel(pname, fontsize=9, color=TEXT_PRI, fontweight='bold')
+                ax.set_ylabel('Sharpe', fontsize=8, color=TEXT_SEC)
+                ax.legend(fontsize=7, facecolor=BG, edgecolor=CARD_BRD, loc='best', framealpha=0.9)
+
+                if not x_numeric:
+                    ax.set_xticks(x_vals)
+                    ax.set_xticklabels([str(v) for v in pvals], fontsize=7)
+                else:
+                    ax.tick_params(axis='x', labelsize=7)
+
+                # Flag badge in top-right
+                badge_color = GREEN if flag == "ROBUST" else (ORANGE if flag == "MODERATE" else RED)
+                ax.text(0.97, 0.95, flag, transform=ax.transAxes, fontsize=8, fontweight='bold',
+                        color='white', ha='right', va='top',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor=badge_color, alpha=0.9))
+
+            # ── Summary table at bottom ──
             if sensitivity_data:
-                summary_text = "SENSITIVITY SUMMARY:  "
-                for pname, bv, isr, osr, sc, fl in sensitivity_data:
-                    marker = "[LOW]" if fl == "LOW" else "[HIGH]"
-                    summary_text += f"{pname}={bv} {marker} ({sc:.2f})    "
-                fig.text(0.5, 0.02, summary_text, ha='center', fontsize=8, color=TEXT_SEC,
-                         family='monospace',
-                         bbox=dict(boxstyle='round,pad=0.4', facecolor=CARD_BG, edgecolor=CARD_BRD, alpha=0.95))
+                tbl_data = []
+                tbl_headers = ["Parameter", "Best Value", "IS Range", "OOS Range",
+                               "IS/OOS Corr", "Sensitivity", "Verdict"]
+                for pname, bv, isr, osr, sc, cr, fl in sensitivity_data:
+                    tbl_data.append([
+                        pname, str(bv),
+                        f"{isr:.3f}", f"{osr:.3f}",
+                        f"{cr:.2f}", f"{sc:.2f}", fl
+                    ])
+
+                tbl_ax = fig.add_axes([0.08, 0.04, 0.84, 0.04 + len(tbl_data) * 0.028])
+                tbl_ax.axis('off')
+                tbl = tbl_ax.table(cellText=tbl_data, colLabels=tbl_headers,
+                                   cellLoc='center', loc='center',
+                                   bbox=[0, 0, 1, 1])
+                tbl.auto_set_font_size(False)
+                tbl.set_fontsize(8.5)
+
+                for (row, col), cell in tbl.get_celld().items():
+                    cell.set_edgecolor('#D1D5DB')
+                    cell.set_linewidth(0.4)
+                    if row == 0:
+                        cell.set_facecolor(HEADER_BG)
+                        cell.set_text_props(color='white', fontweight='bold', fontsize=8)
+                    else:
+                        cell.set_facecolor('#FAFBFC' if row % 2 == 0 else BG)
+                        cell.set_text_props(fontsize=8.5, family='monospace')
+                        # Color the Verdict column
+                        if col == len(tbl_headers) - 1:
+                            txt = cell.get_text().get_text()
+                            c = GREEN if txt == "ROBUST" else (ORANGE if txt == "MODERATE" else RED)
+                            cell.get_text().set_color(c)
+                            cell.get_text().set_fontweight('bold')
+                        # Color the IS/OOS Corr column
+                        if col == 4 and row > 0:
+                            try:
+                                cv = float(cell.get_text().get_text())
+                                cell.get_text().set_color(GREEN if cv > 0.5 else (ORANGE if cv > 0 else RED))
+                            except:
+                                pass
 
             fig.text(0.5, 0.005, f"Run {RUN_ID}  |  QS Finance", ha='center', fontsize=7, color=TEXT_MUT)
-            plt.tight_layout(rect=[0, 0.04, 1, 0.93])
             pdf.savefig(fig, facecolor=BG)
             plt.close(fig)
 
