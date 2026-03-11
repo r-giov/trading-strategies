@@ -33,8 +33,8 @@ PORTFOLIO = [
     ('donchian', 'BTC-USD', 0.15, {'entry': 31, 'exit': 17, 'filter': 70}),
 ]
 
-TG_BOT_TOKEN = '8691594427:AAGKbcObikmFxr3yJk5kVkIFkIDAuVyqeoo'
-TG_CHAT_ID = '6451760231'
+TG_BOT_TOKEN = os.getenv('TG_BOT_TOKEN', '')
+TG_CHAT_ID = os.getenv('TG_CHAT_ID', '')
 
 
 def send_telegram(message):
