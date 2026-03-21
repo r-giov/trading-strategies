@@ -1,0 +1,7 @@
+# Core dependencies for live trading
+MetaTrader5>=5.0.45
+TA-Lib>=0.4.28
+pandas>=2.0
+numpy>=1.24
+yfinance>=0.2.31
+python-dotenv>=1.0
