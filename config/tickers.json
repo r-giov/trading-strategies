@@ -7,11 +7,39 @@
   "indices": ["^DJI", "^IXIC", "^GSPC", "^GDAXI"],
   "forex_majors": ["EURUSD=X", "GBPUSD=X", "USDJPY=X"],
   "commodities": ["GC=F", "CL=F"],
+  "rotation_30": {
+    "us_indices": ["SPY", "QQQ", "DIA"],
+    "intl_indices": ["EWU", "EWG"],
+    "fang_megacap": ["META", "GOOG", "NFLX", "TSLA", "AAPL", "AMZN"],
+    "semiconductors": ["NVDA", "SMH"],
+    "healthcare": ["XLV", "JNJ", "UNH"],
+    "energy": ["XLE", "XOM"],
+    "financials": ["XLF", "JPM"],
+    "consumer_value": ["XLP", "WMT", "PG"],
+    "industrials": ["XLI", "CAT"],
+    "communication": ["XLC"],
+    "defense": ["ITA"],
+    "infrastructure": ["IFRA"],
+    "real_estate": ["XLRE"],
+    "utilities": ["XLU"]
+  },
+  "rotation_30_flat": [
+    "SPY", "QQQ", "DIA", "EWU", "EWG",
+    "META", "GOOG", "NFLX", "TSLA", "AAPL", "AMZN",
+    "NVDA", "SMH",
+    "XLV", "JNJ", "UNH",
+    "XLE", "XOM",
+    "XLF", "JPM",
+    "XLP", "WMT", "PG",
+    "XLI", "CAT",
+    "XLC", "ITA", "IFRA", "XLRE", "XLU"
+  ],
   "asset_strategy_map": {
     "indices": ["MACD_Crossover", "Triple_EMA"],
     "forex_majors": ["RSI_Mean_Reversion"],
     "commodities": ["Donchian_Breakout"],
     "crypto": ["Donchian_Breakout", "Triple_EMA"],
-    "forex_minors": ["MACD_Crossover"]
+    "forex_minors": ["MACD_Crossover"],
+    "rotation": ["Ensemble_Rotation"]
   }
 }

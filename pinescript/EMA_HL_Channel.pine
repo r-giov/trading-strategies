@@ -1,0 +1,90 @@
+// This Pine Script™ v5 strategy is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+// © QS Finance
+
+//@version=5
+strategy("EMA H/L Channel Strategy",
+     overlay        = true,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value = 100,
+     commission_type  = strategy.commission.percent,
+     commission_value = 0.1,
+     slippage        = 2,
+     initial_capital = 100000,
+     calc_on_every_tick = false)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ──────────────────────────────────────────────────────────────────────────────
+
+channel_period = input.int(44,  "Channel EMA Period", minval=1, tooltip="Period for the High/Low EMA channel")
+trend_period   = input.int(200, "Trend EMA Period",   minval=1, tooltip="Period for the trend-filter EMA on Close")
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CALCULATIONS
+// ──────────────────────────────────────────────────────────────────────────────
+
+// 44-period EMA on High and Low prices form the channel
+ema_high = ta.ema(high,  channel_period)
+ema_low  = ta.ema(low,   channel_period)
+
+// 200-period EMA on Close acts as the trend filter
+ema_trend = ta.ema(close, trend_period)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// CONDITIONS
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Bullish: price above trend AND close above both channel lines
+bull_condition = close > ema_trend and close > ema_high and close > ema_low
+
+// Bearish: price below trend AND close below both channel lines
+bear_condition = close < ema_trend and close < ema_high and close < ema_low
+
+// Entry triggers — fire only on the transition bar
+long_entry  = bull_condition and not bull_condition[1]
+short_entry = bear_condition and not bear_condition[1]
+
+// Exit when the opposing condition flips on
+long_exit  = bear_condition
+short_exit = bull_condition
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STRATEGY EXECUTION
+// ──────────────────────────────────────────────────────────────────────────────
+
+if long_entry
+    strategy.entry("Long", strategy.long)
+
+if short_entry
+    strategy.entry("Short", strategy.short)
+
+if long_exit and strategy.position_size > 0
+    strategy.close("Long", comment="Exit Long")
+
+if short_exit and strategy.position_size < 0
+    strategy.close("Short", comment="Exit Short")
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PLOTS
+// ──────────────────────────────────────────────────────────────────────────────
+
+p_ema_high  = plot(ema_high,  "EMA High (Channel)", color=color.new(#00BFFF, 0), linewidth=2)
+p_ema_low   = plot(ema_low,   "EMA Low (Channel)",  color=color.new(#FF69B4, 0), linewidth=2)
+plot(ema_trend, "EMA Trend",  color=color.new(#2ECC71, 0), linewidth=2)
+
+// Fill the channel with a transparent light blue
+fill(p_ema_high, p_ema_low, color=color.new(#00BFFF, 85), title="Channel Fill")
+
+// Triangle markers for entries
+plotshape(long_entry,  title="Buy Signal",  location=location.belowbar, style=shape.triangleup,   size=size.small, color=#2ECC71, text="BUY")
+plotshape(short_entry, title="Sell Signal", location=location.abovebar, style=shape.triangledown, size=size.small, color=#E74C3C, text="SELL")
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ALERTS
+// ──────────────────────────────────────────────────────────────────────────────
+
+alertcondition(long_entry,  title="Long Entry",  message="EMA H/L Channel — LONG entry on {{ticker}} @ {{close}}")
+alertcondition(short_entry, title="Short Entry", message="EMA H/L Channel — SHORT entry on {{ticker}} @ {{close}}")
+alertcondition(long_exit,   title="Long Exit",   message="EMA H/L Channel — exit LONG on {{ticker}} @ {{close}}")
+alertcondition(short_exit,  title="Short Exit",  message="EMA H/L Channel — exit SHORT on {{ticker}} @ {{close}}")
