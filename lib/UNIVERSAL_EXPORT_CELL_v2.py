@@ -90,6 +90,60 @@ def _compute_signals(price_s, params, high_s=None, low_s=None):
         e_raw = (rsi_s.shift(1) <= params['oversold']) & (rsi_s > params['oversold'])
         x_raw = (rsi_s.shift(1) <= params['overbought']) & (rsi_s > params['overbought'])
 
+    elif STRATEGY_NAME == "EMA_HL_Channel":
+        close_s = pd.Series(vals, index=idx)
+        ema_h = pd.Series(talib.EMA(h_v, timeperiod=params['channel']), index=idx)
+        ema_l = pd.Series(talib.EMA(l_v, timeperiod=params['channel']), index=idx)
+        ema_t = pd.Series(talib.EMA(vals, timeperiod=params['trend']), index=idx)
+        bullish = (close_s > ema_t) & (close_s > ema_h) & (close_s > ema_l)
+        bearish = (close_s < ema_t) | (close_s < ema_l)
+        e_raw = bullish & (~bullish.shift(1).fillna(False))
+        x_raw = bearish & (~bearish.shift(1).fillna(False))
+
+    elif STRATEGY_NAME.startswith("Supertrend"):
+        atr = pd.Series(talib.ATR(h_v, l_v, vals, timeperiod=params['atr_period']), index=idx)
+        hl2 = (pd.Series(h_v, index=idx) + pd.Series(l_v, index=idx)) / 2
+        mult = params['multiplier']
+        upper_band = hl2 + mult * atr
+        lower_band = hl2 - mult * atr
+        close_s = pd.Series(vals, index=idx)
+        st = pd.Series(np.nan, index=idx)
+        direction = pd.Series(1, index=idx)
+        ap = params['atr_period']
+        for ii in range(ap, len(vals)):
+            if ii > ap:
+                if not (lower_band.iloc[ii] > lower_band.iloc[ii-1] or close_s.iloc[ii-1] < lower_band.iloc[ii-1]):
+                    lower_band.iloc[ii] = lower_band.iloc[ii-1]
+                if not (upper_band.iloc[ii] < upper_band.iloc[ii-1] or close_s.iloc[ii-1] > upper_band.iloc[ii-1]):
+                    upper_band.iloc[ii] = upper_band.iloc[ii-1]
+            if ii > ap:
+                if st.iloc[ii-1] == upper_band.iloc[ii-1]:
+                    direction.iloc[ii] = -1 if close_s.iloc[ii] <= upper_band.iloc[ii] else 1
+                else:
+                    direction.iloc[ii] = 1 if close_s.iloc[ii] >= lower_band.iloc[ii] else -1
+            st.iloc[ii] = lower_band.iloc[ii] if direction.iloc[ii] == 1 else upper_band.iloc[ii]
+        e_raw = (direction == 1) & (direction.shift(1) == -1)
+        x_raw = (direction == -1) & (direction.shift(1) == 1)
+
+    elif STRATEGY_NAME.startswith("Schaff"):
+        fast_ema = talib.EMA(vals, timeperiod=params['fast'])
+        slow_ema = talib.EMA(vals, timeperiod=params['slow'])
+        macd_line = fast_ema - slow_ema
+        cyc = params['cycle']
+        macd_low = pd.Series(macd_line).rolling(cyc).min()
+        macd_high = pd.Series(macd_line).rolling(cyc).max()
+        stoch1 = np.where((macd_high - macd_low) > 0, (macd_line - macd_low) / (macd_high - macd_low) * 100, 50.0)
+        pf1 = talib.EMA(pd.Series(stoch1, index=idx).values.astype(float), timeperiod=3)
+        pf1_s = pd.Series(pf1, index=idx)
+        pf1_low = pf1_s.rolling(cyc).min()
+        pf1_high = pf1_s.rolling(cyc).max()
+        stoch2 = np.where((pf1_high - pf1_low) > 0, (pf1_s - pf1_low) / (pf1_high - pf1_low) * 100, 50.0)
+        stc = pd.Series(talib.EMA(stoch2.astype(float), timeperiod=3), index=idx).clip(0, 100)
+        oversold = params.get('oversold', 25)
+        overbought = params.get('overbought', 75)
+        e_raw = (stc > oversold) & (stc.shift(1) <= oversold)
+        x_raw = (stc < overbought) & (stc.shift(1) >= overbought)
+
     elif STRATEGY_NAME.startswith("EMA"):
         fv = pd.Series(talib.EMA(vals, timeperiod=params['fast_ema']), index=idx)
         sv = pd.Series(talib.EMA(vals, timeperiod=params['slow_ema']), index=idx)

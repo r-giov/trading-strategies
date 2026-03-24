@@ -1,5 +1,5 @@
 """
-Signal engine — MACD Crossover + Donchian Breakout for portfolio components.
+Signal engine — MACD, Donchian, Triple EMA, Supertrend for portfolio components.
 
 In live trading the 1-bar execution delay is inherent:
   - Daily bar closes -> we compute signal -> execute on next bar's open.
@@ -109,6 +109,182 @@ def compute_donchian_signal(high, low, close, entry_period, exit_period, filter_
     }
 
 
+def compute_triple_ema_signal(close, ema1_period, ema2_period, ema3_period):
+    """Compute Triple EMA crossover signal on latest completed bar.
+
+    Entry: any shorter EMA crosses above a longer EMA (with medium > long trend filter).
+    Exit: any shorter EMA crosses below a longer EMA.
+    Matches _run_ensemble_v3.py crossover logic.
+    """
+    ema1 = talib.EMA(close.values, timeperiod=ema1_period)
+    ema2 = talib.EMA(close.values, timeperiod=ema2_period)
+    ema3 = talib.EMA(close.values, timeperiod=ema3_period)
+
+    if len(ema1) < 2 or np.isnan(ema1[-1]) or np.isnan(ema2[-1]) or np.isnan(ema3[-1]):
+        return {
+            "action": "HOLD", "crossover": False,
+            "reason": "insufficient data", "indicators": {},
+        }
+
+    # Crossover detection (matches ensemble v3: short x medium, with medium > long filter)
+    buy1 = (ema1[-2] <= ema2[-2]) and (ema1[-1] > ema2[-1])
+    buy2 = (ema1[-2] <= ema3[-2]) and (ema1[-1] > ema3[-1])
+    buy3 = (ema2[-2] <= ema3[-2]) and (ema2[-1] > ema3[-1])
+    sell1 = (ema1[-2] >= ema2[-2]) and (ema1[-1] < ema2[-1])
+    sell2 = (ema1[-2] >= ema3[-2]) and (ema1[-1] < ema3[-1])
+    sell3 = (ema2[-2] >= ema3[-2]) and (ema2[-1] < ema3[-1])
+
+    buy_cross = buy1 or buy2 or buy3
+    sell_cross = sell1 or sell2 or sell3
+
+    # Trend context: medium EMA above long EMA = trend OK
+    trend_ok = ema2[-1] > ema3[-1]
+
+    if buy_cross and trend_ok:
+        action, reason = "BUY", "EMA bullish crossover (trend up)"
+    elif buy_cross:
+        action, reason = "HOLD", "EMA bullish crossover but trend down"
+    elif sell_cross:
+        action, reason = "SELL", "EMA bearish crossover"
+    else:
+        action, reason = "HOLD", "no crossover"
+
+    return {
+        "action": action,
+        "crossover": buy_cross or sell_cross,
+        "reason": reason,
+        "indicators": {
+            "ema_short": round(float(ema1[-1]), 4),
+            "ema_med": round(float(ema2[-1]), 4),
+            "ema_long": round(float(ema3[-1]), 4),
+            "trend_up": bool(trend_ok),
+        },
+    }
+
+
+def _compute_supertrend_direction(high_arr, low_arr, close_arr, atr_period, multiplier):
+    """Compute full Supertrend direction array: 1=bullish, -1=bearish.
+
+    Matches _strat_supertrend_portfolio.py compute_supertrend() exactly —
+    uses adaptive band narrowing (proper Supertrend, not simplified).
+    """
+    atr = talib.ATR(high_arr, low_arr, close_arr, timeperiod=atr_period)
+    hl2 = (high_arr + low_arr) / 2.0
+    upper_basic = hl2 + multiplier * atr
+    lower_basic = hl2 - multiplier * atr
+    n = len(close_arr)
+    upper_band = np.full(n, np.nan)
+    lower_band = np.full(n, np.nan)
+    direction = np.zeros(n)
+
+    # Find first valid ATR index
+    first_valid = -1
+    for idx in range(n):
+        if not np.isnan(atr[idx]):
+            first_valid = idx
+            break
+    if first_valid < 0:
+        return direction, upper_band, lower_band, atr
+
+    upper_band[first_valid] = upper_basic[first_valid]
+    lower_band[first_valid] = lower_basic[first_valid]
+    if close_arr[first_valid] > hl2[first_valid]:
+        direction[first_valid] = 1
+    else:
+        direction[first_valid] = -1
+
+    for i in range(first_valid + 1, n):
+        if np.isnan(atr[i]):
+            upper_band[i] = upper_band[i - 1]
+            lower_band[i] = lower_band[i - 1]
+            direction[i] = direction[i - 1]
+            continue
+        lower_band[i] = (max(lower_basic[i], lower_band[i - 1])
+                         if close_arr[i - 1] >= lower_band[i - 1]
+                         else lower_basic[i])
+        upper_band[i] = (min(upper_basic[i], upper_band[i - 1])
+                         if close_arr[i - 1] <= upper_band[i - 1]
+                         else upper_basic[i])
+        if direction[i - 1] == 1:
+            direction[i] = -1 if close_arr[i] < lower_band[i] else 1
+        else:
+            direction[i] = 1 if close_arr[i] > upper_band[i] else -1
+
+    return direction, upper_band, lower_band, atr
+
+
+def compute_supertrend_signal(high, low, close, atr_period, multiplier, trend_sma=0):
+    """Compute Supertrend flip signal on latest completed bar.
+
+    Uses the full adaptive-band Supertrend algorithm from the strategy notebook.
+    Optional SMA trend filter (trend_sma > 0 means only buy when close > SMA).
+    """
+    high_arr = high.values.astype(float)
+    low_arr = low.values.astype(float)
+    close_arr = close.values.astype(float)
+    n = len(close_arr)
+
+    if n < atr_period + 5:
+        return {
+            "action": "HOLD", "crossover": False,
+            "reason": "insufficient data", "indicators": {},
+        }
+
+    direction, upper_band, lower_band, atr = _compute_supertrend_direction(
+        high_arr, low_arr, close_arr, atr_period, multiplier,
+    )
+
+    if np.isnan(atr[-1]):
+        return {
+            "action": "HOLD", "crossover": False,
+            "reason": "ATR not ready", "indicators": {},
+        }
+
+    # Detect direction flip on latest bar
+    flip_up = (direction[-1] == 1) and (direction[-2] == -1) if n >= 2 else False
+    flip_down = (direction[-1] == -1) and (direction[-2] == 1) if n >= 2 else False
+
+    # Optional SMA trend filter (matches notebook logic)
+    trend_ok = True
+    sma_val = None
+    if trend_sma > 0:
+        sma = talib.SMA(close_arr, timeperiod=trend_sma)
+        if not np.isnan(sma[-1]):
+            sma_val = float(sma[-1])
+            trend_ok = close_arr[-1] > sma[-1]
+        if flip_up and not trend_ok:
+            flip_up = False  # block entry when trend filter fails
+
+    trend_up = direction[-1] == 1
+
+    if flip_up:
+        action, reason = "BUY", "supertrend flipped bullish"
+    elif flip_down:
+        action, reason = "SELL", "supertrend flipped bearish"
+    else:
+        action = "HOLD"
+        reason = f"trend {'up' if trend_up else 'down'}, no flip"
+
+    indicators = {
+        "atr": round(float(atr[-1]), 4),
+        "direction": int(direction[-1]),
+        "trend_up": bool(trend_up),
+    }
+    if not np.isnan(upper_band[-1]):
+        indicators["upper_band"] = round(float(upper_band[-1]), 4)
+    if not np.isnan(lower_band[-1]):
+        indicators["lower_band"] = round(float(lower_band[-1]), 4)
+    if sma_val is not None:
+        indicators["trend_sma"] = round(sma_val, 4)
+
+    return {
+        "action": action,
+        "crossover": flip_up or flip_down,
+        "reason": reason,
+        "indicators": indicators,
+    }
+
+
 def _compute_component_signal(comp, close, high=None, low=None):
     """Route to the right signal function based on strategy type."""
     if comp["strategy"] == "MACD_Crossover":
@@ -123,6 +299,18 @@ def _compute_component_signal(comp, close, high=None, low=None):
             high, low, close,
             comp["entry_period"], comp["exit_period"], comp["filter_period"],
         )
+    elif comp["strategy"] == "Triple_EMA":
+        return compute_triple_ema_signal(
+            close, comp["ema1_period"], comp["ema2_period"], comp["ema3_period"],
+        )
+    elif comp["strategy"] == "Supertrend":
+        if high is None or low is None:
+            return {"action": "HOLD", "reason": "Supertrend needs OHLC data",
+                    "crossover": False, "indicators": {}}
+        return compute_supertrend_signal(
+            high, low, close,
+            comp["atr_period"], comp["multiplier"], comp.get("trend_sma", 0),
+        )
     return {"action": "HOLD", "reason": f"unknown strategy: {comp['strategy']}",
             "crossover": False, "indicators": {}}
 
@@ -133,6 +321,11 @@ def _bars_needed(comp):
         return comp["slow_period"] + comp["signal_period"] + 50
     elif comp["strategy"] == "Donchian_Breakout":
         return max(comp["entry_period"], comp["exit_period"], comp["filter_period"]) + 50
+    elif comp["strategy"] == "Triple_EMA":
+        return comp["ema3_period"] + 50   # longest EMA drives warmup
+    elif comp["strategy"] == "Supertrend":
+        sma = comp.get("trend_sma", 0)
+        return max(comp["atr_period"], sma) + 50
     return 200
 
 

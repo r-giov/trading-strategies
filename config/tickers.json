@@ -1,12 +1,55 @@
 {
-  "crypto": [
+  "ftmo": {
+    "indices": {
+      "yfinance": ["^DJI", "^IXIC", "^GSPC", "^GDAXI", "^FTSE", "^N225"],
+      "ftmo_symbols": ["US30", "US100", "US500", "GER40", "UK100", "JP225"],
+      "notes": "Most liquid FTMO instruments. Tight spreads, strong trends."
+    },
+    "forex_majors": {
+      "yfinance": ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X", "USDCHF=X"],
+      "ftmo_symbols": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "USDCHF"],
+      "notes": "Core forex pairs. Tightest spreads on FTMO."
+    },
+    "forex_crosses": {
+      "yfinance": ["EURJPY=X", "GBPJPY=X", "EURGBP=X", "AUDJPY=X", "CADJPY=X"],
+      "ftmo_symbols": ["EURJPY", "GBPJPY", "EURGBP", "AUDJPY", "CADJPY"],
+      "notes": "JPY crosses trend well. Wider spreads than majors."
+    },
+    "commodities": {
+      "yfinance": ["GC=F", "SI=F", "CL=F"],
+      "ftmo_symbols": ["XAUUSD", "XAGUSD", "USOIL"],
+      "notes": "Gold is the most traded FTMO commodity. High volatility."
+    },
+    "crypto": {
+      "yfinance": [
+        "BTC-USD", "ETH-USD", "SOL-USD", "LTC-USD", "XRP-USD",
+        "ADA-USD", "DOT-USD", "DOGE-USD", "AVAX-USD", "BNB-USD",
+        "LINK-USD", "AAVE-USD"
+      ],
+      "ftmo_symbols": [
+        "BTCUSD", "ETHUSD", "SOLUSD", "LTCUSD", "XRPUSD",
+        "ADAUSD", "DOTUSD", "DOGEUSD", "AVAXUSD", "BNBUSD",
+        "LINKUSD", "AAVEUSD"
+      ],
+      "notes": "3x leverage standard, 1x swing. 24/7 but wider spreads than forex."
+    }
+  },
+  "ftmo_flat": [
+    "^DJI", "^IXIC", "^GSPC", "^GDAXI", "^FTSE", "^N225",
+    "EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X", "USDCHF=X",
+    "EURJPY=X", "GBPJPY=X", "EURGBP=X", "AUDJPY=X", "CADJPY=X",
+    "GC=F", "SI=F", "CL=F",
     "BTC-USD", "ETH-USD", "SOL-USD", "LTC-USD", "XRP-USD",
-    "ADA-USD", "DOT-USD", "DOGE-USD", "DASH-USD", "EOS-USD",
-    "XLM-USD", "AVAX-USD", "BNB-USD", "LINK-USD", "AAVE-USD"
+    "ADA-USD", "DOT-USD", "DOGE-USD", "AVAX-USD", "BNB-USD",
+    "LINK-USD", "AAVE-USD"
   ],
-  "indices": ["^DJI", "^IXIC", "^GSPC", "^GDAXI"],
-  "forex_majors": ["EURUSD=X", "GBPUSD=X", "USDJPY=X"],
-  "commodities": ["GC=F", "CL=F"],
+  "ftmo_strategy_map": {
+    "indices": ["Supertrend", "MACD_Crossover", "Schaff_Trend_Cycle"],
+    "forex_majors": ["RSI_Mean_Reversion", "Schaff_Trend_Cycle", "EMA_HL_Channel"],
+    "forex_crosses": ["Supertrend", "MACD_Crossover"],
+    "commodities": ["Donchian_Breakout", "Supertrend", "EMA_HL_Channel"],
+    "crypto": ["Donchian_Breakout", "Supertrend", "Momentum_Breakout"]
+  },
   "rotation_30": {
     "us_indices": ["SPY", "QQQ", "DIA"],
     "intl_indices": ["EWU", "EWG"],
@@ -33,13 +76,5 @@
     "XLP", "WMT", "PG",
     "XLI", "CAT",
     "XLC", "ITA", "IFRA", "XLRE", "XLU"
-  ],
-  "asset_strategy_map": {
-    "indices": ["MACD_Crossover", "Triple_EMA"],
-    "forex_majors": ["RSI_Mean_Reversion"],
-    "commodities": ["Donchian_Breakout"],
-    "crypto": ["Donchian_Breakout", "Triple_EMA"],
-    "forex_minors": ["MACD_Crossover"],
-    "rotation": ["Ensemble_Rotation"]
-  }
+  ]
 }

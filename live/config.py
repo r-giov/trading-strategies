@@ -1,10 +1,13 @@
 """
-Live trading configuration for FTMO crypto portfolio.
-Best params sourced from grid search + OOS validation.
+Live trading configuration — multi-strategy FTMO portfolio.
+Best params sourced from grid search + OOS validation in strategy notebooks.
 
-Portfolio: 6 components (equal-weighted per Carver's principle)
-  - Donchian Breakout: XRP, BTC, SOL
-  - MACD Crossover: BTC, XRP, ETH
+Portfolio groups (5 strategy sleeves):
+  - ftmo_crypto:          6 components — Donchian + MACD on BTC, ETH, XRP, SOL
+  - 3ema_ensemble:        8 components — Triple EMA on NASDAQ + FANG mega-caps
+  - macd_portfolio:       5 components — MACD on healthcare/defensive
+  - donchian_portfolio:   8 components — Donchian on energy/value/industrials
+  - supertrend_portfolio: 8 components — Supertrend on indices + blue-chip stocks
 """
 
 import os
@@ -39,16 +42,18 @@ DAILY_LOSS_BUFFER = 0.80     # stop at 80% of daily limit ($4,000)
 TOTAL_LOSS_BUFFER = 0.80     # stop at 80% of total limit ($8,000)
 
 # ── Portfolio Components ─────────────────────────────────────────────
-# Equal-weighted (1/6 each) — Carver: equal weighting beats "picking the best"
 # Each component generates independent BUY/SELL/HOLD signals.
 # Components on the same symbol are aggregated before execution.
+# Weights are equal within each group (Carver: equal weighting beats optimized).
 
 PORTFOLIO = [
+    # ── FTMO Crypto (existing 6) ─────────────────────────────────────
     {
         "id": "DONCHIAN_XRPUSD",
         "symbol": "XRPUSD",
         "yf_ticker": "XRP-USD",
         "strategy": "Donchian_Breakout",
+        "group": "ftmo_crypto",
         "weight": 1/6,
         "entry_period": 10,
         "exit_period": 3,
@@ -61,6 +66,7 @@ PORTFOLIO = [
         "symbol": "BTCUSD",
         "yf_ticker": "BTC-USD",
         "strategy": "MACD_Crossover",
+        "group": "ftmo_crypto",
         "weight": 1/6,
         "fast_period": 30,
         "slow_period": 59,
@@ -73,6 +79,7 @@ PORTFOLIO = [
         "symbol": "XRPUSD",
         "yf_ticker": "XRP-USD",
         "strategy": "MACD_Crossover",
+        "group": "ftmo_crypto",
         "weight": 1/6,
         "fast_period": 22,
         "slow_period": 39,
@@ -85,6 +92,7 @@ PORTFOLIO = [
         "symbol": "ETHUSD",
         "yf_ticker": "ETH-USD",
         "strategy": "MACD_Crossover",
+        "group": "ftmo_crypto",
         "weight": 1/6,
         "fast_period": 29,
         "slow_period": 44,
@@ -97,6 +105,7 @@ PORTFOLIO = [
         "symbol": "BTCUSD",
         "yf_ticker": "BTC-USD",
         "strategy": "Donchian_Breakout",
+        "group": "ftmo_crypto",
         "weight": 1/6,
         "entry_period": 31,
         "exit_period": 17,
@@ -109,12 +118,235 @@ PORTFOLIO = [
         "symbol": "SOLUSD",
         "yf_ticker": "SOL-USD",
         "strategy": "Donchian_Breakout",
+        "group": "ftmo_crypto",
         "weight": 1/6,
         "entry_period": 15,
         "exit_period": 7,
         "filter_period": 55,
         "oos_sharpe": None,
         "ftmo_pass_rate": 48.4,
+    },
+
+    # ── 3EMA Ensemble — Tech/Growth (8 instruments) ──────────────────
+    # Source: _run_ensemble_v3.py — Triple EMA crossover with trend filter
+    # Params: grid-searched EMA short/med/long; defaults from ensemble v3
+    {
+        "id": "3EMA_US100",
+        "symbol": "US100.cash",
+        "yf_ticker": "^IXIC",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_META",
+        "symbol": "META",
+        "yf_ticker": "META",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_GOOG",
+        "symbol": "GOOG",
+        "yf_ticker": "GOOG",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_NFLX",
+        "symbol": "NFLX",
+        "yf_ticker": "NFLX",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_TSLA",
+        "symbol": "TSLA",
+        "yf_ticker": "TSLA",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_AAPL",
+        "symbol": "AAPL",
+        "yf_ticker": "AAPL",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_AMZN",
+        "symbol": "AMZN",
+        "yf_ticker": "AMZN",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+    {
+        "id": "3EMA_NVDA",
+        "symbol": "NVDA",
+        "yf_ticker": "NVDA",
+        "strategy": "Triple_EMA",
+        "group": "3ema_ensemble",
+        "weight": 1/8,
+        "ema1_period": 8,
+        "ema2_period": 21,
+        "ema3_period": 55,
+    },
+
+    # ── MACD Portfolio — Healthcare/Defensive (5 instruments) ─────────
+    # Source: _strat_macd_portfolio.py — MACD crossover + SMA trend filter
+    # Params: MACD fast/slow/signal, default 12/26/9 (grid-searched in notebook)
+    # ── MACD Portfolio — MT5-available only (JNJ, WMT) ──────────────
+    {
+        "id": "MACDP_JNJ",
+        "symbol": "JNJ",
+        "yf_ticker": "JNJ",
+        "strategy": "MACD_Crossover",
+        "group": "macd_portfolio",
+        "weight": 1/2,
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9,
+    },
+    {
+        "id": "MACDP_WMT",
+        "symbol": "WMT",
+        "yf_ticker": "WMT",
+        "strategy": "MACD_Crossover",
+        "group": "macd_portfolio",
+        "weight": 1/2,
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9,
+    },
+
+    # ── Donchian Portfolio — MT5-available only (XOM, CVX, JPM) ──────
+    {
+        "id": "DONCP_XOM",
+        "symbol": "XOM",
+        "yf_ticker": "XOM",
+        "strategy": "Donchian_Breakout",
+        "group": "donchian_portfolio",
+        "weight": 1/3,
+        "entry_period": 20,
+        "exit_period": 10,
+        "filter_period": 50,
+    },
+    {
+        "id": "DONCP_CVX",
+        "symbol": "CVX",
+        "yf_ticker": "CVX",
+        "strategy": "Donchian_Breakout",
+        "group": "donchian_portfolio",
+        "weight": 1/3,
+        "entry_period": 20,
+        "exit_period": 10,
+        "filter_period": 50,
+    },
+    {
+        "id": "DONCP_JPM",
+        "symbol": "JPM",
+        "yf_ticker": "JPM",
+        "strategy": "Donchian_Breakout",
+        "group": "donchian_portfolio",
+        "weight": 1/3,
+        "entry_period": 20,
+        "exit_period": 10,
+        "filter_period": 50,
+    },
+
+    # ── Supertrend Portfolio — MT5-available only (6 instruments) ─────
+    {
+        "id": "SUPER_US30",
+        "symbol": "US30.cash",
+        "yf_ticker": "^DJI",
+        "strategy": "Supertrend",
+        "group": "supertrend_portfolio",
+        "weight": 1/6,
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "trend_sma": 0,
+    },
+    {
+        "id": "SUPER_US500",
+        "symbol": "US500.cash",
+        "yf_ticker": "^GSPC",
+        "strategy": "Supertrend",
+        "group": "supertrend_portfolio",
+        "weight": 1/6,
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "trend_sma": 0,
+    },
+    {
+        "id": "SUPER_GER40",
+        "symbol": "GER40.cash",
+        "yf_ticker": "^GDAXI",
+        "strategy": "Supertrend",
+        "group": "supertrend_portfolio",
+        "weight": 1/6,
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "trend_sma": 0,
+    },
+    {
+        "id": "SUPER_UK100",
+        "symbol": "UK100.cash",
+        "yf_ticker": "^FTSE",
+        "strategy": "Supertrend",
+        "group": "supertrend_portfolio",
+        "weight": 1/6,
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "trend_sma": 0,
+    },
+    {
+        "id": "SUPER_MSFT",
+        "symbol": "MSFT",
+        "yf_ticker": "MSFT",
+        "strategy": "Supertrend",
+        "group": "supertrend_portfolio",
+        "weight": 1/6,
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "trend_sma": 0,
+    },
+    {
+        "id": "SUPER_V",
+        "symbol": "V",
+        "yf_ticker": "V",
+        "strategy": "Supertrend",
+        "group": "supertrend_portfolio",
+        "weight": 1/6,
+        "atr_period": 14,
+        "multiplier": 3.0,
+        "trend_sma": 0,
     },
 ]
 

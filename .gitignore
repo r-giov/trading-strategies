@@ -29,3 +29,8 @@ desktop.ini
 # Data (downloaded at runtime)
 *.csv
 !config/*.csv
+live/.env
+webapp/frontend/node_modules/
+webapp/frontend/.next/
+*.pyc
+__pycache__/
